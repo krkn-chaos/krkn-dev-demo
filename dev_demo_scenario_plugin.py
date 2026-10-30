@@ -57,3 +57,16 @@ class DevDemoScenarioPlugin(AbstractScenarioPlugin):
         except Exception:
             logging.exception("Dev demo scenario failed")
             return 1
+
+
+# def get_scenario_types(self) -> list[str]:
+#     return ["dev_demo_scenarios"]
+
+# def run(
+#     self,
+#     run_uuid: str,
+#     scenario: str,
+#     lib_telemetry: KrknTelemetryOpenshift,
+#     scenario_telemetry: ScenarioTelemetry,
+# ) -> int:
+#     return self.execute_demo(scenario, lib_telemetry)
