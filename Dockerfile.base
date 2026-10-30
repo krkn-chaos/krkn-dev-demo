@@ -1,4 +1,6 @@
 FROM quay.io/krkn-chaos/krkn:latest
 
-COPY --chown=krkn:krkn krkn/scenario_plugins/dev_demo/ \
-    /home/krkn/kraken/krkn/scenario_plugins/dev_demo/
+COPY --chown=krkn:krkn __init__.py \
+    /home/krkn/kraken/krkn/scenario_plugins/dev_demo/__init__.py
+COPY --chown=krkn:krkn dev_demo_scenario_plugin.py \
+    /home/krkn/kraken/krkn/scenario_plugins/dev_demo/dev_demo_scenario_plugin.py

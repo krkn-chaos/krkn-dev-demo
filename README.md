@@ -1,16 +1,35 @@
-# Krkn plugin development demo
+# Krkn custom plugin demo
 
-This directory is the starter material. The plugin deliberately has only
-`execute_demo()`: implement `run()` and `get_scenario_types()` live before trying
-to load or build it. The directory under `krkn/scenario_plugins/` must be named
-`dev_demo`, because Krkn rejects plugin directory names containing `scenario`
-or `plugin`.
+All commands use absolute paths, so you can run them from any directory. The
+workflow assumes that `/tmp/krkn` does not exist yet. If it already contains
+work, choose a different `KRKN_DIR`; do not delete a checkout with local changes.
 
-## Live coding
+## 1. Set the paths and clone the repositories
 
-Copy `__init__.py` and `dev_demo_scenario_plugin.py` into
-`krkn/scenario_plugins/dev_demo/` in the clean Krkn checkout. Add these methods
-to `DevDemoScenarioPlugin`:
+```sh
+export KRKN_DIR=/tmp/krkn
+export KRKN_DEV_PLUGIN_DIR="$KRKN_DIR/krkn/scenario_plugins/dev_demo"
+export KRKN_BASE_IMAGE=krkn-dev-demo:base
+export KRKN_SCENARIO_IMAGE=krkn-dev-demo:scenario
+
+git clone https://github.com/krkn-chaos/krkn.git "$KRKN_DIR"
+git clone git@github.com:krkn-chaos/krkn-dev-demo.git "$KRKN_DEV_PLUGIN_DIR"
+```
+
+The plugin directory must be named `dev_demo`. Krkn's plugin factory rejects
+directory names containing `scenario` or `plugin`. The module name
+`dev_demo_scenario_plugin.py` matches the class name `DevDemoScenarioPlugin`.
+
+## 2. Complete the plugin during the demo
+
+Open `$KRKN_DEV_PLUGIN_DIR/dev_demo_scenario_plugin.py`. The `execute_demo()`
+method is already implemented. It reads the scenario YAML path passed to
+`run()`, validates `wait` and `namespace`, sleeps, checks that the namespace
+exists through `krkn-lib`, and logs the pod names. It returns `0` on success
+and `1` on failure.
+
+Add `from krkn_lib.models.telemetry import ScenarioTelemetry` to the imports,
+then implement the two abstract methods in `DevDemoScenarioPlugin`:
 
 ```python
 def get_scenario_types(self) -> list[str]:
@@ -26,43 +45,54 @@ def run(
     return self.execute_demo(scenario, lib_telemetry)
 ```
 
-Add `from krkn_lib.models.telemetry import ScenarioTelemetry` to the imports.
-The `scenario` argument is the path injected by Krkn; `execute_demo()` loads
-that YAML, checks `wait` and `namespace`, sleeps, verifies that the namespace
-exists, and logs its pod names. Missing namespace or other errors return `1`.
+The plugin remains abstract until these methods are added, so Krkn cannot
+load it before the live coding step.
 
-For a direct Krkn run, add `dev_demo_scenarios: [scenarios/dev_demo.yaml]` to
-`kraken.chaos_scenarios` in a demo copy of `config/config.yaml`. Keep the normal
-configuration for the other Krkn sections. `scenario.yaml` is a ready input.
-
-## Scenario image material
-
-For the krkn-hub-style image, copy `Dockerfile.template`, `env.sh`, `run.sh`,
-`scenario.yaml.template`, and `krknctl-input.json` into a `dev-demo/` directory
-in a krkn-hub checkout. The Dockerfile uses the shared `config.yaml.template`,
-`env.sh`, and `common_run.sh` from the hub root. Generate `dev-demo/Dockerfile`
-with `KRKNCTL_INPUT` set to the compact contents of `krknctl-input.json`, as
-done by the hub's `build.sh`.
-
-`Dockerfile.base` builds a quick derived Krkn base image from the checkout after
-the plugin is implemented. Use the Krkn checkout as the build context:
+For a direct Krkn run, copy the example scenario and create a separate Krkn
+configuration:
 
 ```sh
-podman build -f /path/to/dev_demo/Dockerfile.base -t krkn-dev-demo:base /path/to/krkn
+cp "$KRKN_DEV_PLUGIN_DIR/scenario.yaml" "$KRKN_DIR/scenarios/dev_demo.yaml"
+cp "$KRKN_DIR/config/config.yaml" "$KRKN_DIR/config/dev_demo_config.yaml"
 ```
 
-From the krkn-hub checkout, compile and build the scenario image after copying
-the files to `dev-demo/`:
+In `$KRKN_DIR/config/dev_demo_config.yaml`, set `kraken.chaos_scenarios` to
+`- dev_demo_scenarios: [scenarios/dev_demo.yaml]`.
+
+## 3. Build the Krkn base image with the plugin
+
+After implementing the abstract methods, build a base image derived from the
+published Krkn image. Use the cloned plugin directory as the build context:
 
 ```sh
-export KRKNCTL_INPUT="$(tr -d '\n' < dev-demo/krknctl-input.json)"
-envsubst '${KRKNCTL_INPUT}' < dev-demo/Dockerfile.template > dev-demo/Dockerfile
-podman build -f dev-demo/Dockerfile -t krkn-hub:dev-demo .
+podman build \
+  -f "$KRKN_DEV_PLUGIN_DIR/Dockerfile.base" \
+  -t "$KRKN_BASE_IMAGE" \
+  "$KRKN_DEV_PLUGIN_DIR"
 ```
 
-The hub's `build.sh` has a fixed scenario list, so its default run will not
-generate this new Dockerfile until `dev-demo` is added to that list.
+`Dockerfile.base` copies the two Python plugin files into the Krkn image. The
+upstream Dockerfile in `containers/` clones Krkn from GitHub during its build;
+using it unchanged would omit this local plugin.
 
-For a full Krkn base rebuild, adapt the upstream
-`containers/Dockerfile.template` to copy the local checkout instead of running
-`git clone`; otherwise it will build without this plugin.
+## 4. Build the standalone scenario image
+
+The scenario image includes `krknctl.*` labels and the two input fields from
+`krknctl-input.json`. It builds directly from the plugin repository. There is
+no krkn-hub checkout or rebuild.
+
+```sh
+export KRKNCTL_INPUT="$(tr -d '\n' < "$KRKN_DEV_PLUGIN_DIR/krknctl-input.json")"
+envsubst '${KRKNCTL_INPUT}' \
+  < "$KRKN_DEV_PLUGIN_DIR/Dockerfile.template" \
+  > "$KRKN_DEV_PLUGIN_DIR/Dockerfile"
+podman build \
+  -f "$KRKN_DEV_PLUGIN_DIR/Dockerfile" \
+  -t "$KRKN_SCENARIO_IMAGE" \
+  "$KRKN_DEV_PLUGIN_DIR"
+```
+
+`krknctl-input.json` exposes `wait` and `namespace`. At runtime, `run.sh`
+inserts those values into the scenario YAML, derives a dedicated Krkn
+configuration from the base image's `config/config.yaml`, and runs only
+`dev_demo_scenarios`.
