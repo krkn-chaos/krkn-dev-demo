@@ -1,7 +1,7 @@
 FROM krkn-dev-demo:base
 
 COPY --chown=krkn:krkn env.sh /home/krkn/env.sh
-COPY --chown=krkn:krkn run.sh /home/krkn/run.sh
+COPY --chmod=0755 --chown=krkn:krkn run.sh /home/krkn/run.sh
 COPY --chown=krkn:krkn scenario.yaml.template \
     /home/krkn/kraken/scenarios/scenario.yaml.template
 

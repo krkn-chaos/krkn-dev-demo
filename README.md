@@ -99,7 +99,9 @@ podman build \
 `krknctl-input.json` exposes `wait` and `namespace`. At runtime, `run.sh`
 inserts those values into the scenario YAML, derives a dedicated Krkn
 configuration from the base image's `config/config.yaml`, and runs only
-`dev_demo_scenarios`.
+`dev_demo_scenarios`. The Dockerfile makes `run.sh` executable because Krkn
+Operator invokes it directly, while the local image entrypoint passes it to
+`bash`.
 
 ## 5. Test the scenario locally with Podman and Kind
 
@@ -135,8 +137,10 @@ the pod names from `default`. Change `NAMESPACE` to test another namespace.
 
 The operator and a private Docker Distribution registry run on the management
 cluster. The user supplies a target already registered in the operator;
-target registration is outside this walkthrough. `kind-config.yml` maps host
-`127.0.0.1:5001` to the registry NodePort `30500`. A distinct cluster name
+target registration is outside this walkthrough. The operator creates the
+scenario Pod on this management cluster and gives it the selected target's
+kubeconfig. `kind-config.yml` maps host `127.0.0.1:5001` to the registry
+NodePort `30500` and enables containerd's registry hosts directory. A distinct cluster name
 leaves any existing `kind` cluster untouched.
 
 ```sh
@@ -153,6 +157,10 @@ kubectl --context "$KRKN_MGMT_CONTEXT" get nodes
 
 These commands require a running Podman Machine and free host port `5001`.
 Keep the management Kind cluster running for the remaining steps.
+After a Podman Machine restart, start the existing Kind node if it stopped,
+then run `kind export kubeconfig --name "$KRKN_MGMT_CLUSTER"` to refresh the
+host API port in your kubeconfig. The registry URL below uses the stable node
+name rather than the node IP.
 
 ## 7. Install the private registry in the management cluster
 
@@ -184,25 +192,47 @@ kubectl --context "$KRKN_MGMT_CONTEXT" -n registry \
   get service demo-registry-docker-registry
 ```
 
-Find the management node's address on the `kind` Podman network. The operator
-uses this address to reach the same registry that the host sees at
-`localhost:5001`.
+Find the management node's name on the `kind` Podman network. The name is
+resolvable from both operator pods and the node, and stays stable when Podman
+Machine restarts. The host sees the same registry at `localhost:5001`.
 
 ```sh
 export KRKN_MGMT_NODE="$(kind get nodes --name "$KRKN_MGMT_CLUSTER" | head -n 1)"
-export KRKN_REGISTRY_IP="$(podman inspect -f \
-  '{{(index .NetworkSettings.Networks "kind").IPAddress}}' \
-  "$KRKN_MGMT_NODE")"
-export KRKN_REGISTRY_URL="$KRKN_REGISTRY_IP:30500"
+export KRKN_REGISTRY_URL="$KRKN_MGMT_NODE:30500"
 printf 'Registry address for the operator: %s\n' "$KRKN_REGISTRY_URL"
 ```
 
-The selected target must be able to reach this address and its container
-runtime must allow HTTP pulls from it. If the target is outside the local Kind
-network, publish the registry at an address reachable from that target and
-register that address instead. The host port mapping alone does not make
-`localhost:5001` reachable from a different cluster. Target networking and
-runtime configuration are outside this walkthrough.
+The operator can query this HTTP registry, but kubelet pulls the image through
+containerd on the management node. Configure that runtime for the exact
+registry address returned above.
+The [`insecure` setting in krknctl](https://github.com/krkn-chaos/krknctl)
+controls its own registry API requests and does not configure containerd.
+
+```sh
+for node in $(kind get nodes --name "$KRKN_MGMT_CLUSTER"); do
+  # Repair a cluster created before kind-config.yml enabled this directory.
+  if ! podman exec "$node" grep -Fq \
+    '[plugins."io.containerd.cri.v1.images".registry]' \
+    /etc/containerd/config.toml; then
+    printf '\n[plugins."io.containerd.cri.v1.images".registry]\n  config_path = "/etc/containerd/certs.d"\n' |
+      podman exec -i "$node" sh -c 'cat >> /etc/containerd/config.toml'
+    podman exec "$node" systemctl restart containerd
+  fi
+
+  registry_dir="/etc/containerd/certs.d/$KRKN_REGISTRY_URL"
+  podman exec "$node" mkdir -p "$registry_dir"
+  printf 'server = "http://%s"\n[host."http://%s"]\n  capabilities = ["pull", "resolve"]\n' \
+    "$KRKN_REGISTRY_URL" "$KRKN_REGISTRY_URL" |
+    podman exec -i "$node" sh -c "cat > '$registry_dir/hosts.toml'"
+done
+```
+
+This follows [containerd's registry hosts configuration](https://github.com/containerd/containerd/blob/main/docs/hosts.md).
+The target cluster needs access to its own Kubernetes API from the scenario Pod;
+target setup remains outside this walkthrough.
+If a Pod was already in `ImagePullBackOff`, kubelet may take several minutes to
+retry. The existing run remains pinned to its original image digest. After
+rebuilding and pushing a changed image, start a new run to use the new digest.
 
 ## 8. Push the scenario image
 
@@ -262,6 +292,9 @@ In **Settings → Private Registries**, add a registry with these values:
 - **Skip TLS Verification**: leave disabled; this registry has no TLS
 - **Available to All Users**: enabled for this isolated demo
 
+If an earlier run used the node IP as the registry URL, edit the saved registry
+to use `$KRKN_REGISTRY_URL`; its pull secret must use the same host and port.
+
 The custom image has no Cosign signature. On the same **Settings → Private
 Registries** tab, disable **Image signature verification** for this disposable
 management cluster.
@@ -271,7 +304,7 @@ images in normal environments.
 ## 11. Run and inspect the scenario
 
 In the console, choose **Run Scenario**, select a target that you have already
-registered and configured to pull from this registry, choose
+registered, choose
 `dev-demo-registry`, then select the `dev-demo` scenario. Set `wait` to `2` and
 `namespace` to `default`, and start the run. In **Jobs**, inspect its phase and
 logs. The output should include `##### DEVELOPMENT SCENARIO #####` and the
