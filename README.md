@@ -36,17 +36,17 @@ Add `from krkn_lib.models.telemetry import ScenarioTelemetry` to the imports,
 then implement the two abstract methods in `DevDemoScenarioPlugin`:
 
 ```python
-def get_scenario_types(self) -> list[str]:
-    return ["dev_demo_scenarios"]
+    def get_scenario_types(self) -> list[str]:
+        return ["dev_demo_scenarios"]
 
-def run(
-    self,
-    run_uuid: str,
-    scenario: str,
-    lib_telemetry: KrknTelemetryOpenshift,
-    scenario_telemetry: ScenarioTelemetry,
-) -> int:
-    return self.execute_demo(scenario, lib_telemetry)
+    def run(
+        self,
+        run_uuid: str,
+        scenario: str,
+        lib_telemetry: KrknTelemetryOpenshift,
+        scenario_telemetry: ScenarioTelemetry,
+    ) -> int:
+        return self.execute_demo(scenario, lib_telemetry)
 ```
 
 The plugin remains abstract until these methods are added, so Krkn cannot

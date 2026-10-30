@@ -8,11 +8,15 @@ envsubst '$WAIT_SECONDS $NAMESPACE' \
   < scenarios/scenario.yaml.template > scenarios/dev_demo.yaml
 
 python3.11 - <<'PY'
+import os
 from pathlib import Path
 
 import yaml
 
 config = yaml.safe_load(Path("config/config.yaml").read_text(encoding="utf-8"))
+config["kraken"]["kubeconfig_path"] = os.environ.get(
+    "KUBECONFIG", "/home/krkn/.kube/config"
+)
 config["kraken"]["chaos_scenarios"] = [
     {"dev_demo_scenarios": ["scenarios/dev_demo.yaml"]}
 ]
