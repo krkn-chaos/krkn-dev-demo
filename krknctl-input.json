@@ -5,8 +5,7 @@
     "description": "Seconds to wait before listing pods in the namespace (0 to 60).",
     "variable": "WAIT_SECONDS",
     "type": "number",
-    "required": "false",
-    "validation_message": "wait must be an integer from 0 to 60"
+    "required": "false"
   },
   {
     "name": "namespace",
