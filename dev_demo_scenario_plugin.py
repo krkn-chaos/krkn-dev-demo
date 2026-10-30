@@ -46,15 +46,27 @@ class DevDemoScenarioPlugin(AbstractScenarioPlugin):
             time.sleep(wait)
 
             kubernetes = lib_telemetry.get_lib_kubernetes()
-            kubernetes.get_namespace_status(namespace)
+            if namespace not in kubernetes.list_namespaces():
+                logging.error("Development scenario: namespace '%s' does not exist", namespace)
+                return 1
+
             pods = kubernetes.list_pods(namespace)
+            pod_names = "\n".join(f"  - {pod}" for pod in pods) if pods else "  (none)"
             logging.info(
-                "Pods in namespace %s: %s",
+                "\n\n"
+                "##### DEVELOPMENT SCENARIO #####\n"
+                "Namespace: %s\n"
+                "Pods:\n%s\n"
+                "##### END DEVELOPMENT SCENARIO #####\n\n",
                 namespace,
-                ", ".join(pods) if pods else "(none)",
+                pod_names,
             )
             return 0
-        except Exception:
-            logging.exception("Dev demo scenario failed")
+        except Exception as exc:
+            logging.error(
+                "Development scenario failed: %s: %s",
+                type(exc).__name__,
+                str(exc).splitlines()[0] if str(exc) else "(no details)",
+            )
             return 1
 
