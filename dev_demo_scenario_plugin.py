@@ -14,7 +14,7 @@
 
 import logging
 import time
-
+from krkn_lib.models.telemetry import ScenarioTelemetry
 import yaml
 from krkn_lib.telemetry.ocp import KrknTelemetryOpenshift
 
