@@ -1,12 +1,16 @@
 # Krkn custom plugin demo
 
-All commands use absolute paths, so you can run them from any directory. The
-workflow assumes that `/tmp/krkn` does not exist yet. If it already contains
-work, choose a different `KRKN_DIR`; do not delete a checkout with local changes.
+All paths are absolute. Start with `cd /tmp` so Git has a valid working
+directory even if a previous `/tmp/krkn` checkout was removed while your shell
+was inside it. The workflow assumes that `/tmp/krkn` does not exist yet. If it
+already contains work, choose a different `KRKN_DIR`; do not delete a checkout
+with local changes.
 
 ## 1. Set the paths and clone the repositories
 
 ```sh
+cd /tmp
+
 export KRKN_DIR=/tmp/krkn
 export KRKN_DEV_PLUGIN_DIR="$KRKN_DIR/krkn/scenario_plugins/dev_demo"
 export KRKN_BASE_IMAGE=krkn-dev-demo:base
