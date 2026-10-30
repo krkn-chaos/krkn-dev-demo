@@ -100,3 +100,33 @@ podman build \
 inserts those values into the scenario YAML, derives a dedicated Krkn
 configuration from the base image's `config/config.yaml`, and runs only
 `dev_demo_scenarios`.
+
+## 5. Test the scenario locally with Podman and Kind
+
+This test requires the Kind cluster to be running.
+
+Kind's host kubeconfig usually points to `127.0.0.1`, which is not the Kind API
+server from inside the scenario container. Generate an internal kubeconfig in
+your home directory, where Podman Machine can mount it, and run the image on
+Kind's container network. The temporary file is removed when the command ends.
+
+```sh
+(
+  set -e
+  KIND_CLUSTER_NAME=kind
+  KRKN_TEST_KUBECONFIG="$(mktemp "$HOME/.kube/krkn-kind-demo.XXXXXX")"
+  trap 'rm -f "$KRKN_TEST_KUBECONFIG"' EXIT
+  kind get kubeconfig --internal --name "$KIND_CLUSTER_NAME" > "$KRKN_TEST_KUBECONFIG"
+  export KUBECONFIG="$KRKN_TEST_KUBECONFIG"
+
+  podman run --rm --user 0 --network kind \
+    -e WAIT_SECONDS=2 \
+    -e NAMESPACE=default \
+    -e KUBECONFIG=/home/krkn/.kube/config \
+    -v "$(realpath "$KUBECONFIG"):/home/krkn/.kube/config:ro" \
+    "$KRKN_SCENARIO_IMAGE"
+)
+```
+
+The output should contain the `##### DEVELOPMENT SCENARIO #####` banner and
+the pod names from `default`. Change `NAMESPACE` to test another namespace.
